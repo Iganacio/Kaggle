@@ -1,1 +1,245 @@
+# This Python 3 environment comes with many helpful analytics libraries installed
+# It is defined by the kaggle/python Docker image: https://github.com/kaggle/docker-python
+# For example, here's several helpful packages to load
 
+import numpy as np # linear algebra
+import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
+
+# Input data files are available in the read-only "../input/" directory
+# For example, running this (by clicking run or pressing Shift+Enter) will list all files under the input directory
+
+import os
+for dirname, _, filenames in os.walk('/kaggle/input'):
+    for filename in filenames:
+        print(os.path.join(dirname, filename))
+
+# You can write up to 20GB to the current directory (/kaggle/working/) that gets preserved as output when you create a version using "Save & Run All" 
+# You can also write temporary files to /kaggle/temp/, but they won't be saved outside of the current session
+
+
+Train_X = pd.read_csv("/kaggle/input/digit-recognizer/train.csv")
+Test_X = pd.read_csv("/kaggle/input/digit-recognizer/test.csv")
+Example = pd.read_csv("/kaggle/input/digit-recognizer/sample_submission.csv")
+
+print(Example)
+
+
+
+import math
+import numpy as np
+import h5py
+import matplotlib.pyplot as plt
+import scipy
+from PIL import Image
+from scipy import ndimage
+
+import tensorflow as tf
+from tensorflow.python.framework import ops
+
+from sklearn.model_selection import train_test_split
+
+%matplotlib inline
+np.random.seed(1)
+
+
+#Firt glance
+Train_Y=Train_X["label"]
+Train_X.drop("label", inplace=True, axis=1)
+Train_X.head()
+
+
+# Defining the bath size and putting in variables the rest of the data.
+IMAGE_WIDTH = 28
+IMAGE_HEIGHT = 28
+IMAGE_CHANNELS = 1
+IMAGE_SIZE = (IMAGE_WIDTH, IMAGE_HEIGHT, IMAGE_CHANNELS)
+
+BATCH_SIZE = n_train/25
+
+
+# Reshape the data
+XX_train = np.reshape(Train_X.values, (-1,28, 28, 1))
+X_test=np.reshape(Test_X.values, (-1,28, 28, 1))
+XX_train.shape
+
+
+# Divide the data in train and evaluation
+X_train, X_val, yy_train, yy_val = train_test_split(XX_train, Train_Y, test_size=0.2, random_state=0)
+
+
+#Convert categorical variable into dummy/indicator variables
+y_train = pd.get_dummies(yy_train).values
+y_val = pd.get_dummies(yy_val).values
+
+
+#Lets visualizate a example
+index = 120
+sample_img = X_train[index, :, :, :]
+plt.imshow(sample_img, cmap = "gray")
+
+
+#Let's obtain some interesting data
+n_train = X_train.shape[0]
+n_val = X_val.shape[0]
+
+print(n_train)
+
+
+#MODEL
+
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, BatchNormalization, Dropout, Flatten, Dense, Activation
+from tensorflow.keras.callbacks import EarlyStopping
+
+train_datagen = ImageDataGenerator(
+      rescale=0.3,
+      rotation_range = 15,
+      width_shift_range = 0.15,
+      height_shift_range = 0.15,
+      zoom_range = 0.2)
+
+train_gen = train_datagen.flow(X_train, y_train, batch_size = n_train)
+
+for X_batch, y_batch in train_gen:
+# create a grid of 3x3 images
+    print(np.shape(X_batch))
+    print(np.shape(X_train))
+    for i in range(0, 9):
+        plt.subplot(330 + 1 + i)
+        plt.imshow(X_batch[i].reshape(28, 28), cmap=plt.get_cmap('gray'))
+    # show the plot
+    plt.show()
+    break
+    
+
+print(train_gen)
+
+
+index = 10
+sample_img = X_train[index, :, :, :]
+plt.imshow(sample_img, cmap = "gray")
+
+
+sample_img = X_batch[index, :, :, :]
+print(y_batch[index])
+plt.imshow(sample_img, cmap = "gray")
+
+
+early_stopping = EarlyStopping(
+    monitor = "val_loss", 
+    min_delta = 0.0008, 
+    patience = 15, 
+    restore_best_weights = True, 
+    verbose = 1
+)
+
+callbacks = [early_stopping]
+
+
+
+model = Sequential([
+  Conv2D(filters = 32, kernel_size = (5,5), padding = "same", input_shape = IMAGE_SIZE),
+  Activation("relu"),
+  MaxPooling2D(),
+  Dropout(0.45),
+  Conv2D(filters = 64, kernel_size = (5, 5), padding = "same"),
+  Activation("relu"),
+  MaxPooling2D(),
+  Dropout(0.45),
+  Flatten(),
+  Dense(256),
+  Activation("relu"),
+  Dropout(0.45),
+  Dense(10, activation = "softmax"),
+])
+
+model.summary()
+
+
+model.compile(optimizer = "adam", loss = "categorical_crossentropy", metrics = ["accuracy"])
+
+
+model.fit(
+    x = X_batch,
+    y= y_batch,
+    steps_per_epoch = n_train // BATCH_SIZE,
+    epochs = 100, 
+    validation_data = (X_val, y_val), 
+    callbacks = callbacks
+)
+
+
+index = 2
+sample_img = X_test[index, :, :, :]
+plt.imshow(sample_img, cmap = "gray")
+
+
+predictions = model.predict(X_val)
+print(predictions)
+
+
+predictions = model.predict(X_test)
+print(predictions)
+
+predictions = np.argmax(predictions, axis = 1)
+print(predictions)
+
+
+yyy_val = yy_val.values
+print(yyy_val)
+
+predictions_val = model.predict(X_val)
+predictions_val = np.argmax(predictions_val, axis = 1)
+print(predictions_val)
+
+
+
+from sklearn.datasets import make_classification
+import seaborn as sns
+from sklearn.metrics import confusion_matrix
+
+
+
+mat = confusion_matrix(yyy_val,predictions_val)
+
+axes = sns.heatmap(mat,square=True, annot=True,fmt='d',
+                   cbar=True, cmap=plt.cm.BrBG)
+
+class_labels = ['0','1','2','3','4','5','6','7','8','9' ]
+
+axes.set_xlabel('Actual')
+axes.set_ylabel('Model Prediction')
+
+tick_marks = np.arange(len(class_labels)) + 0.5
+
+axes.set_xticks(tick_marks)
+axes.set_xticklabels(class_labels,rotation=0)
+
+axes.set_yticks(tick_marks)
+axes.set_yticklabels(class_labels,rotation=0)
+
+axes.set_title('Confusion Matrix')
+
+
+
+
+for index in range (len(yyy_val)):
+    i=0
+    if yyy_val[index] != predictions_val[index]:
+        i=i+1
+        print ("The prediction was: ", predictions_val[index], " and the label ", yyy_val[index])
+        sample_img = X_val[index, :, :, :]
+        plt.imshow(sample_img, cmap = "gray")       
+        plt.show()
+
+print(i)
+
+
+Example["Label"]=predictions
+#test["Survived"]=model_Y['Union_discrete']
+Result=Example
+
+
+#Obtein the file
+Result.to_csv('my_submission3.csv', index=False)
